@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="PakDzal_Games_API/PakDzal_Games_API.csproj" />
+  <Project Path="PakDzal_Games_WPF/PakDzal_Games_WPF.csproj" />
+</Solution>

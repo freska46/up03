@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title> PakDzal Games - Техническая документация</title>
+<style>
+body { font-family: 'Times New Roman', serif; font-size: 12pt; margin: 2cm; }
+h1 { font-size: 18pt; text-align: center; color: #6A1B9A; }
+h2 { font-size: 14pt; color: #4A148C; border-bottom: 1px solid #6A1B9A; }
+h3 { font-size: 13pt; color: #6A1B9A; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+th, td { border: 1px solid #666; padding: 8px; }
+th { background: #E0E0E0; }
+code { font-family: 'Courier New', monospace; background: #F5F5F5; padding: 2px 4px; }
+pre { background: #F5F5F5; padding: 15px; overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<h1>ИГРОВОЙ КЛУБ (PakDzal Games)<br>ПОДРОБНАЯ ТЕХНИЧЕСКАЯ ДОКУМЕНТАЦИЯ</h1>
+
+<h2>ЧАСТЬ 1: ОБЩАЯ АРХИТЕКТУРА</h2>
+
+<p>Проект состоит из трех основных компонентов:</p>
+<ol>
+<li>База данных PostgreSQL (pakdzal_games) - хранит данные</li>
+<li>Web API (ASP.NET Core) - предоставляет данные по HTTP</li>
+<li>WPF приложение - настольный клиент для отображения и редактирования данных</li>
+</ol>
+
+<p><b>Связь между компонентами:</b><br>
+Пользователь → WPF приложение → HTTP запросы → Web API → PostgreSQL</p>
+
+<h2>ЧАСТЬ 2: БАЗА ДАННЫХ (PostgreSQL + pgAdmin 4)</h2>
+
+<h3>Таблица USERS (Пользователи)</h3>
+<table>
+<tr><th>Поле</th><th>Тип</th><th>Описание</th></tr>
+<tr><td>user_id</td><td>SERIAL PRIMARY KEY</td><td>Автоинкремент, уникальный ID</td></tr>
+<tr><td>name</td><td>VARCHAR(100) NOT NULL</td><td>Имя пользователя (обязательно)</td></tr>
+<tr><td>email</td><td>VARCHAR(100) UNIQUE</td><td>Email (уникальный, обязательно)</td></tr>
+<tr><td>phone</td><td>VARCHAR(20)</td><td>Телефон (необязательно)</td></tr>
+<tr><td>city</td><td>VARCHAR(50) DEFAULT 'Курск'</td><td>Город (по умолчанию Курск)</td></tr>
+<tr><td>registration_date</td><td>DATE DEFAULT CURRENT_DATE</td><td>Дата регистрации</td></tr>
+</table>
+
+<h3>Таблица GAMES (Игры)</h3>
+<table>
+<tr><th>Поле</th><th>Тип</th><th>Описание</th></tr>
+<tr><td>game_id</td><td>SERIAL PRIMARY KEY</td><td>Уникальный ID игры</td></tr>
+<tr><td>title</td><td>VARCHAR(100) NOT NULL</td><td>Название игры</td></tr>
+<tr><td>genre</td><td>VARCHAR(50) NOT NULL</td><td>Жанр игры</td></tr>
+<tr><td>price_per_hour</td><td>DECIMAL(10,2) NOT NULL</td><td>Цена за час</td></tr>
+<tr><td>available</td><td>BOOLEAN DEFAULT TRUE</td><td>Доступна для аренды</td></tr>
+</table>
+
+<h3>Таблица SESSIONS (Сессии)</h3>
+<table>
+<tr><th>Поле</th><th>Тип</th><th>Описание</th></tr>
+<tr><td>session_id</td><td>SERIAL PRIMARY KEY</td><td>Уникальный ID сессии</td></tr>
+<tr><td>user_id</td><td>INTEGER NOT NULL</td><td>Ссылка на пользователя</td></tr>
+<tr><td>game_id</td><td>INTEGER NOT NULL</td><td>Ссылка на игру</td></tr>
+<tr><td>start_time</td><td>TIMESTAMP NOT NULL</td><td>Время начала сессии</td></tr>
+<tr><td>end_time</td><td>TIMESTAMP</td><td>Время окончания сессии</td></tr>
+<tr><td>total_price</td><td>DECIMAL(10,2)</td><td>Общая стоимость</td></tr>
+</table>
+
+<h2>ЧАСТЬ 3: WEB API (ASP.NET Core)</h2>
+
+<h3>Точка входа Program.cs</h3>
+<pre>using Microsoft.EntityFrameworkCore;
+using PakDzal_Games_API.Data;
+
+var builder = WebApplication.CreateBuilder(args);
+
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
+    ?? "Host=localhost;Database=pakdzal_games;Username=postgres;Password=111";
+
+builder.Services.AddDbContext&lt;GameClubDbContext&gt;(options =>
+    options.UseNpgsql(connectionString));
+
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI();
+
+app.MapControllers();
+app.Run();</pre>
+
+<h3>Модель User.cs</h3>
+<pre>using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace PakDzal_Games_API.Models;
+
+[Table("Users")]
+public class User
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int UserId { get; set; }
+
+    [Required]
+    [MaxLength(100)]
+    public string Name { get; set; } = "";
+
+    [Required]
+    [MaxLength(100)]
+    public string Email { get; set; } = "";
+
+    [MaxLength(20)]
+    public string? Phone { get; set; }
+
+    [Required]
+    [MaxLength(50)]
+    public string City { get; set; } = "Курск";
+
+    public DateTime RegistrationDate { get; set; } = DateTime.Now.Date;
+
+    public virtual ICollection&lt;Session&gt; Sessions { get; set; } = new List&lt;Session&gt;();
+}</pre>
+
+<h3>DbContext (GameClubDbContext.cs)</h3>
+<pre>using Microsoft.EntityFrameworkCore;
+using PakDzal_Games_API.Models;
+
+public class GameClubDbContext : DbContext
+{
+    public GameClubDbContext(DbContextOptions&lt;GameClubDbContext&gt; options) : base(options) { }
+
+    public DbSet&lt;User&gt; Users { get; set; } = null!;
+    public DbSet&lt;Game&gt; Games { get; set; } = null!;
+    public DbSet&lt;Session&gt; Sessions { get; set; } = null!;
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+        
+        modelBuilder.Entity&lt;User&gt;(entity =&gt;
+        {
+            entity.HasKey(e =&gt; e.UserId);
+            entity.HasIndex(e =&gt; e.Email).IsUnique();
+            entity.Property(e =&gt; e.City).HasDefaultValue("Курск");
+        });
+
+        modelBuilder.Entity&lt;Session&gt;(entity =&gt;
+        {
+            entity.HasOne(e =&gt; e.User)
+                  .WithMany(u =&gt; u.Sessions)
+                  .HasForeignKey(e =&gt; e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e =&gt; e.Game)
+                  .WithMany(g =&gt; g.Sessions)
+                  .HasForeignKey(e =&gt; e.GameId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+}</pre>
+
+<h3>Контроллер UsersController.cs</h3>
+<pre>using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using PakDzal_Games_API.Data;
+using PakDzal_Games_API.Models;
+
+[ApiController]
+[Route("api/[controller]")]
+public class UsersController : ControllerBase
+{
+    private readonly GameClubDbContext _context;
+
+    public UsersController(GameClubDbContext context)
+    {
+        _context = context;
+    }
+
+    [HttpGet]
+    public async Task&lt;ActionResult&lt;IEnumerable&lt;User&gt;&gt;&gt; GetUsers(
+        [FromQuery] string? search,
+        [FromQuery] string? city)
+    {
+        var query = _context.Users.AsQueryable();
+
+        if (!string.IsNullOrEmpty(search))
+        {
+            search = search.ToLower();
+            query = query.Where(u =&gt; u.Name.ToLower().Contains(search) || 
+                                         u.Email.ToLower().Contains(search));
+        }
+
+        if (!string.IsNullOrEmpty(city))
+            query = query.Where(u =&gt; u.City == city);
+
+        return await query.ToListAsync();
+    }
+
+    [HttpGet("{id}")]
+    public async Task&lt;ActionResult&lt;User&gt;&gt; GetUser(int id)
+    {
+        var user = await _context.Users.FindAsync(id);
+        if (user == null) return NotFound();
+        return user;
+    }
+
+    [HttpPost]
+    public async Task&lt;ActionResult&lt;User&gt;&gt; CreateUser(User user)
+    {
+        _context.Users.Add(user);
+        await _context.SaveChangesAsync();
+        return CreatedAtAction(nameof(GetUser), new { id = user.UserId }, user);
+    }
+
+    [HttpPut("{id}")]
+    public async Task&lt;IActionResult&gt; UpdateUser(int id, User user)
+    {
+        if (id != user.UserId) return BadRequest();
+        
+        _context.Entry(user).State = EntityState.Modified;
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!UserExists(id)) return NotFound();
+            throw;
+        }
+        return NoContent();
+    }
+
+    [HttpDelete("{id}")]
+    public async Task&lt;IActionResult&gt; DeleteUser(int id)
+    {
+        var user = await _context.Users.FindAsync(id);
+        if (user == null) return NotFound();
+
+        _context.Users.Remove(user);
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    private bool UserExists(int id) =&gt; _context.Users.Any(u =&gt; u.UserId == id);
+}</pre>
+
+<h3>appsettings.json</h3>
+<pre>{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*",
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Database=pakdzal_games;Username=postgres;Password=111"
+  }
+}</pre>
+
+<h2>ЧАСТЬ 4: WPF ПРИЛОЖЕНИЕ</h2>
+
+<h3>ApiService.cs</h3>
+<pre>using System.Net.Http;
+using System.Net.Http.Json;
+using PakDzal_Games_WPF.Models;
+
+public class ApiService
+{
+    private readonly HttpClient _httpClient;
+    private const string BaseUrl = "http://localhost:5222/api";
+
+    public ApiService()
+    {
+        _httpClient = new HttpClient();
+    }
+
+    public async Task&lt;List&lt;User&gt;&gt; GetUsersAsync(string? search = null, string? city = null)
+    {
+        var url = $"{BaseUrl}/users";
+        
+        if (!string.IsNullOrEmpty(search))
+            url += $"?search={Uri.EscapeDataString(search)}";
+        
+        if (!string.IsNullOrEmpty(city))
+            url += city.Contains("?") ? $"&amp;city={Uri.EscapeDataString(city)}" 
+                                   : $"?city={Uri.EscapeDataString(city)}";
+
+        return await _httpClient.GetFromJsonAsync&lt;List&lt;User&gt;&gt;(url) ?? new List&lt;User&gt;();
+    }
+
+    public async Task&lt;User&gt; CreateUserAsync(User user)
+    {
+        var response = await _httpClient.PostAsJsonAsync($"{BaseUrl}/users", user);
+        return (await response.Content.ReadFromJsonAsync&lt;User&gt;())!;
+    }
+
+    public async Task UpdateUserAsync(User user)
+    {
+        var response = await _httpClient.PutAsJsonAsync($"{BaseUrl}/users/{user.UserId}", user);
+    }
+
+    public async Task DeleteUserAsync(int id)
+    {
+        var response = await _httpClient.DeleteAsync($"{BaseUrl}/users/{id}");
+    }
+}</pre>
+
+<h3>Модель User.cs (WPF)</h3>
+<pre>using System.Text.Json.Serialization;
+
+namespace PakDzal_Games_WPF.Models;
+
+public class User
+{
+    [JsonPropertyName("userId")]
+    public int UserId { get; set; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+
+    [JsonPropertyName("email")]
+    public string Email { get; set; } = "";
+
+    [JsonPropertyName("phone")]
+    public string? Phone { get; set; }
+
+    [JsonPropertyName("city")]
+    public string City { get; set; } = "Курск";
+
+    [JsonPropertyName("registrationDate")]
+    public DateTime RegistrationDate { get; set; }
+}</pre>
+
+<h3>App.xaml (ресурсы и стили)</h3>
+<pre>&lt;Application.Resources&gt;
+    &lt;ResourceDictionary&gt;
+        &lt;Color x:Key="PrimaryPurple"&gt;#6A1B9A&lt;/Color&gt;
+        &lt;Color x:Key="BackgroundDark"&gt;#1A1A2E&lt;/Color&gt;
+        
+        &lt;SolidColorBrush x:Key="PrimaryPurpleBrush" Color="{StaticResource PrimaryPurple}"/&gt;
+        &lt;SolidColorBrush x:Key="BackgroundDarkBrush" Color="{StaticResource BackgroundDark}"/&gt;
+        
+        &lt;Style x:Key="MainButtonStyle" TargetType="Button"&gt;
+            &lt;Setter Property="Background" Value="{StaticResource PrimaryPurpleBrush}"/&gt;
+            &lt;Setter Property="Foreground" Value="White"/&gt;
+            &lt;Setter Property="Padding" Value="20,10"/&gt;
+            &lt;Setter Property="FontWeight" Value="Bold"/&gt;
+        &lt;/Style&gt;
+        
+        &lt;Style x:Key="ModernTextBoxStyle" TargetType="TextBox"&gt;
+            &lt;Setter Property="Background" Value="#0F3460"/&gt;
+            &lt;Setter Property="Foreground" Value="White"/&gt;
+            &lt;Setter Property="BorderBrush" Value="{StaticResource PrimaryPurpleBrush}"/&gt;
+        &lt;/Style&gt;
+    &lt;/ResourceDictionary&gt;
+&lt;/Application.Resources&gt;</pre>
+
+<h2>ЧАСТЬ 5: КАК РАБОТАЕТ ВЗАИМОДЕЙСТВИЕ</h2>
+
+<p><b>Сценарий: Добавление пользователя</b></p>
+<ol>
+<li>WPF: btnAddUser_Click вызывает new UserDialog()</li>
+<li>UserDialog: Открывается окно с полями ввода</li>
+<li>Пользователь заполняет данные и нажимает "Сохранить"</li>
+<li>UserDialog: Создает объект User с введенными данными</li>
+<li>UserDialog: Вызывает _apiService.CreateUserAsync(user)</li>
+<li>ApiService: Создает POST зап��ос к /api/users</li>
+<li>HTTP: Отправляет JSON на http://localhost:5222/api/users</li>
+<li>API: Принимает запрос в UsersController.CreateUser()</li>
+<li>API: Добавляет пользователя в контекст EF</li>
+<li>API: Сохраняет в PostgreSQL (INSERT запрос)</li>
+<li>API: Возвращает созданного пользователя</li>
+<li>ApiService: Десериализует ответ в User</li>
+<li>UserDialog: Закрывается с DialogResult = true</li>
+<li>MainWindow: Обновляет DataGrid новыми данными</li>
+</ol>
+
+<h2>ЧАСТЬ 6: NuGet ПАКЕТЫ</h2>
+
+<table>
+<tr><th>Пакет</th><th>Назначение</th></tr>
+<tr><td>Npgsql.EntityFrameworkCore.PostgreSQL</td><td>Провайдер EF для PostgreSQL</td></tr>
+<tr><td>Swashbuckle.AspNetCore</td><td>Документация API (Swagger)</td></tr>
+<tr><td>Microsoft.EntityFrameworkCore.Design</td><td>Инструменты для миграций</td></tr>
+</table>
+
+<hr>
+<p align="center"><b>Автор: PakDzal Games | Дата: 2026</b></p>
+
+</body>
+</html>

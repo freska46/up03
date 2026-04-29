@@ -1,0 +1,403 @@
+================================================================================
+                   ИГРОВОЙ КЛУБ (PakDzal Games)
+                   Техническая документация
+================================================================================
+
+1. ВЫБОР ТЕХНОЛОГИЙ
+--------------------
+- Язык: C# (.NET 8.0)
+- Web API: ASP.NET Core 8 (минимальный шаблон)
+- База данных: PostgreSQL + Entity Framework Core
+- Драйвер: Npgsql.EntityFrameworkCore.PostgreSQL
+- Настольное приложение: WPF (Windows Presentation Foundation)
+
+Почему именно эти технологии:
+- ASP.NET Core - самый популярный фреймворк для Web API
+- WPF - встроен в .NET, не требует дополнительных установок
+- PostgreSQL - бесплатная и мощная СУБД
+- Entity Framework Core - ORM для работы с БД через код
+
+
+2. АРХИТЕКТУРА ПРИЛОЖЕНИЯ
+-------------------------
+PakDzal_Games (общее решение)
+│
+├─ PakDzal_Games_API (проект Web API)
+│   ├─ Controllers/          - API контроллеры
+│   ├─ Models/              - Модели данных
+│   ├─ Data/               - DbContext
+│   └─ Program.cs          - Точка входа
+│
+└─ PakDzal_Games_WPF (WPF приложение)
+    ├─ Views/               - XAML диалоги
+    ├─ Models/             - Модели для JSON
+    ├─ Services/           - ApiService для HTTP запросов
+    └─ MainWindow.xaml(.cs) - Главное окно
+
+
+3. КОД API (ASP.NET Core)
+----------------------
+Точка входа - Program.cs:
+```csharp
+using Microsoft.EntityFrameworkCore;
+using PakDzal_Games_API.Data;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Строка подключения к БД
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
+    ?? "Host=localhost;Database=pakdzal_games;Username=postgres;Password=111";
+
+// Настройка Entity Framework
+builder.Services.AddDbContext<GameClubDbContext>(options =>
+    options.UseNpgsql(connectionString));
+
+// Добавляем контроллеры
+builder.Services.AddControllers();
+
+// Swagger для документации
+builder.Services.AddSwaggerGen();
+
+var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI();
+
+app.MapControllers();
+app.Run();
+```
+
+Модель данных (Entity Framework):
+```csharp
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+[Table("Users")]
+public class User
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int UserId { get; set; }
+
+    [Required]
+    [MaxLength(100)]
+    public string Name { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(100)]
+    public string Email { get; set; } = string.Empty;
+
+    [MaxLength(20)]
+    public string? Phone { get; set; }
+
+    [Required]
+    [MaxLength(50)]
+    public string City { get; set; } = "Курск";
+
+    public DateTime RegistrationDate { get; set; } = DateTime.Now.Date;
+}
+```
+
+DbContext (контекст БД):
+```csharp
+using Microsoft.EntityFrameworkCore;
+using PakDzal_Games_API.Models;
+
+public class GameClubDbContext : DbContext
+{
+    public GameClubDbContext(DbContextOptions<GameClubDbContext> options) : base(options) { }
+
+    public DbSet<User> Users { get; set; } = null!;
+    public DbSet<Game> Games { get; set; } = null!;
+    public DbSet<Session> Sessions { get; set; } = null!;
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+        
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.HasKey(e => e.UserId);
+            entity.HasIndex(e => e.Email).IsUnique();
+        });
+        // ... связи между таблицами
+    }
+}
+```
+
+Контроллер (API эндпоинты):
+```csharp
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using PakDzal_Games_API.Data;
+using PakDzal_Games_API.Models;
+
+[ApiController]
+[Route("api/[controller]")]
+public class UsersController : ControllerBase
+{
+    private readonly GameClubDbContext _context;
+
+    public UsersController(GameClubDbContext context)
+    {
+        _context = context;
+    }
+
+    // GET /api/users
+    [HttpGet]
+    public async Task<ActionResult<IEnumerable<User>>> GetUsers()
+    {
+        return await _context.Users.ToListAsync();
+    }
+
+    // GET /api/users/{id}
+    [HttpGet("{id}")]
+    public async Task<ActionResult<User>> GetUser(int id)
+    {
+        var user = await _context.Users.FindAsync(id);
+        if (user == null) return NotFound();
+        return user;
+    }
+
+    // POST /api/users
+    [HttpPost]
+    public async Task<ActionResult<User>> CreateUser(User user)
+    {
+        _context.Users.Add(user);
+        await _context.SaveChangesAsync();
+        return CreatedAtAction(nameof(GetUser), new { id = user.UserId }, user);
+    }
+
+    // PUT /api/users/{id}
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateUser(int id, User user)
+    {
+        if (id != user.UserId) return BadRequest();
+        _context.Entry(user).State = EntityState.Modified;
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    // DELETE /api/users/{id}
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteUser(int id)
+    {
+        var user = await _context.Users.FindAsync(id);
+        if (user == null) return NotFound();
+        _context.Users.Remove(user);
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+}
+```
+
+
+4. КОД WPF ПРИЛОЖЕНИЯ
+--------------------
+ApiService (работа с HTTP):
+```csharp
+using System.Net.Http;
+using System.Net.Http.Json;
+using PakDzal_Games_WPF.Models;
+
+public class ApiService
+{
+    private readonly HttpClient _httpClient;
+    private const string BaseUrl = "http://localhost:5222/api";
+
+    public ApiService()
+    {
+        _httpClient = new HttpClient();
+    }
+
+    public async Task<List<User>> GetUsersAsync(string? search = null, string? city = null)
+    {
+        var url = $"{BaseUrl}/users";
+        if (!string.IsNullOrEmpty(search))
+            url += $"?search={Uri.EscapeDataString(search)}";
+        if (!string.IsNullOrEmpty(city))
+            url += city.Contains("?") ? $"&city={Uri.EscapeDataString(city)}" 
+                                   : $"?city={Uri.EscapeDataString(city)}";
+        return await _httpClient.GetFromJsonAsync<List<User>>(url) ?? new List<User>();
+    }
+
+    public async Task<User> CreateUserAsync(User user)
+    {
+        var response = await _httpClient.PostAsJsonAsync($"{BaseUrl}/users", user);
+        return (await response.Content.ReadFromJsonAsync<User>())!;
+    }
+    // ... остальные методы
+}
+```
+
+
+5. XAML (UserDialog.xaml)
+-----------------------
+```xml
+<Window x:Class="PakDzal_Games_WPF.UserDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Пользователь"
+        Height="450" Width="400"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{StaticResource BackgroundDarkBrush}">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+            <TextBlock Text="Имя:*" Foreground="{StaticResource TextPrimaryBrush}"/>
+            <TextBox x:Name="txtName" Style="{StaticResource ModernTextBoxStyle}"/>
+        </StackPanel>
+        
+        <!-- ... остальные поля -->
+
+        <StackPanel Grid.Row="5" Orientation="Horizontal">
+            <Button Content="Сохранить" Click="btnSave_Click"/>
+            <Button Content="Отмена" Click="btnCancel_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
+```
+
+
+6. СТИЛИ WPF (App.xaml)
+---------------------
+```xml
+<Application.Resources>
+    <ResourceDictionary>
+        <!-- Цвета -->
+        <Color x:Key="PrimaryPurple">#6A1B9A</Color>
+        <Color x:Key="BackgroundDark">#1A1A2E</Color>
+        
+        <!-- Кисти -->
+        <SolidColorBrush x:Key="PrimaryPurpleBrush" Color="{StaticResource PrimaryPurple}"/>
+        <SolidColorBrush x:Key="BackgroundDarkBrush" Color="{StaticResource BackgroundDark}"/>
+        
+        <!-- Стиль кнопки -->
+        <Style x:Key="MainButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource PrimaryPurpleBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="20,10"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+        
+        <!-- Стиль текстового поля -->
+        <Style x:Key="ModernTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Background" Value="#0F3460"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="{StaticResource PrimaryPurpleBrush}"/>
+        </Style>
+    </ResourceDictionary>
+</Application.Resources>
+```
+
+
+7. ПОДКЛЮЧЕНИЕ К БД
+-----------------
+ appsettings.json (API):
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Database=pakdzal_games;Username=postgres;Password=111"
+  }
+}
+```
+
+
+8. МОДЕЛИ WPF
+-----------
+```csharp
+using System.Text.Json.Serialization;
+
+public class User
+{
+    [JsonPropertyName("userId")]
+    public int UserId { get; set; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("email")]
+    public string Email { get; set; } = string.Empty;
+    // ... остальные свойства
+}
+```
+
+
+9. КОД ФАЙЛОВ (.csproj)
+----------------------
+API проект:
+```xml
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11" />
+  </ItemGroup>
+</Project>
+```
+
+WPF проект:
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+</Project>
+```
+
+
+10. СОЗДАНИЕ БД (pgAdmin)
+------------------------
+1. Открыть pgAdmin 4
+2. Создать базу данных "pakdzal_games"
+3. Выполнить SQL:
+```sql
+CREATE TABLE Users (
+    user_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    phone VARCHAR(20),
+    city VARCHAR(50) DEFAULT 'Курск',
+    registration_date DATE DEFAULT CURRENT_DATE
+);
+
+CREATE TABLE Games (
+    game_id SERIAL PRIMARY KEY,
+    title VARCHAR(100) NOT NULL,
+    genre VARCHAR(50) NOT NULL,
+    price_per_hour DECIMAL(10,2) NOT NULL,
+    available BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE Sessions (
+    session_id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES Users(user_id),
+    game_id INTEGER REFERENCES Games(game_id),
+    start_time TIMESTAMP NOT NULL,
+    end_time TIMESTAMP,
+    total_price DECIMAL(10,2)
+);
+
+-- Тестовые данные
+INSERT INTO Users (name, email, city) VALUES ...
+INSERT INTO Games (title, genre, price_per_hour) VALUES ...
+INSERT INTO Sessions (user_id, game_id, start_time, end_time, total_price) VALUES ...
+```
+
+
+================================================================================

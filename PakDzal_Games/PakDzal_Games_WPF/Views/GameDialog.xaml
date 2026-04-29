@@ -1,0 +1,51 @@
+<Window x:Class="PakDzal_Games_WPF.GameDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Игра"
+        Height="380" Width="400"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{StaticResource BackgroundDarkBrush}">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+            <TextBlock Text="Название:*" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,5"/>
+            <TextBox x:Name="txtTitle" Style="{StaticResource ModernTextBoxStyle}"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Margin="0,0,0,10">
+            <TextBlock Text="Жанр:*" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,5"/>
+            <TextBox x:Name="txtGenre" Style="{StaticResource ModernTextBoxStyle}"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="2" Margin="0,0,0,10">
+            <TextBlock Text="Цена за час:*" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,5"/>
+            <TextBox x:Name="txtPrice" Style="{StaticResource ModernTextBoxStyle}"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="3" Margin="0,0,0,10" Orientation="Horizontal">
+            <CheckBox x:Name="chkAvailable" Content="Доступна"
+                     Foreground="{StaticResource TextPrimaryBrush}"
+                     IsChecked="True"
+                     VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <TextBlock Grid.Row="4" Text="* - обязательные поля" 
+                   Foreground="{StaticResource TextSecondaryBrush}" 
+                   FontSize="11"/>
+
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button Content="Сохранить" Style="{StaticResource MainButtonStyle}" Click="btnSave_Click"/>
+            <Button Content="Отмена" Style="{StaticResource SecondaryButtonStyle}" Click="btnCancel_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

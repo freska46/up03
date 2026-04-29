@@ -1,0 +1,23 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "PakDzal_Games_WPF/1.0.0": {
+        "runtime": {
+          "PakDzal_Games_WPF.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "PakDzal_Games_WPF/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}
